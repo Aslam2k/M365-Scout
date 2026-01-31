@@ -19,8 +19,8 @@ load_dotenv()
 # Configuration
 PLANKA_URL = os.getenv("PLANKA_URL", "http://10.0.3.3:1337/api")
 PLANKA_TOKEN = os.getenv("PLANKA_TOKEN")
-BOARD_ID = os.getenv("PLANKA_BOARD_ID", "1700130106099368966")
-TODO_LIST_ID = os.getenv("PLANKA_TODO_LIST_ID", "1700134749361669129")
+BOARD_ID = os.getenv("PLANKA_BOARD_ID", "1700155527532643351")
+TODO_LIST_ID = os.getenv("PLANKA_TODO_LIST_ID", "1700155634697110553")
 
 # Microsoft/Power Platform RSS Feeds
 FEEDS = {
