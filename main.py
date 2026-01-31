@@ -24,10 +24,22 @@ Headers = Dict[str, str]
 
 @dataclass(frozen=True)
 class Config:
-    PLANKA_URL: str = os.getenv("PLANKA_URL", "http://10.0.3.3:1337/api")
+    """Configuration loaded from environment variables."""
+    PLANKA_URL: str = os.getenv("PLANKA_URL", "")
     PLANKA_TOKEN: Optional[str] = os.getenv("PLANKA_TOKEN")
-    BOARD_ID: str = os.getenv("PLANKA_BOARD_ID", "1700155527532643351")
-    TODO_LIST_ID: str = os.getenv("PLANKA_TODO_LIST_ID", "1700155634697110553")
+    BOARD_ID: str = os.getenv("PLANKA_BOARD_ID", "")
+    TODO_LIST_ID: str = os.getenv("PLANKA_TODO_LIST_ID", "")
+    
+    def __post_init__(self):
+        """Validate required configuration."""
+        if not self.PLANKA_TOKEN:
+            raise ValueError("PLANKA_TOKEN environment variable is required")
+        if not self.PLANKA_URL:
+            raise ValueError("PLANKA_URL environment variable is required")
+        if not self.BOARD_ID:
+            raise ValueError("PLANKA_BOARD_ID environment variable is required")
+        if not self.TODO_LIST_ID:
+            raise ValueError("PLANKA_TODO_LIST_ID environment variable is required")
 
 
 FEEDS: Dict[str, str] = {
