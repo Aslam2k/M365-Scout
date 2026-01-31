@@ -1,0 +1,23 @@
+name: News Aggregation
+
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+
+jobs:
+  aggregate:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+    - run: |
+        pip install -r requirements.txt
+        python main.py
+      env:
+        PLANKA_URL: {{ secrets.PLANKA_URL }}
+        PLANKA_TOKEN: {{ secrets.PLANKA_TOKEN }}
+        PLANKA_BOARD_ID: {{ secrets.PLANKA_BOARD_ID }}
+        PLANKA_TODO_LIST_ID: {{ secrets.PLANKA_TODO_LIST_ID }}
