@@ -4,26 +4,33 @@ Microsoft News Aggregator
 Auto-collects Microsoft/Power Platform news and syncs to Planka
 """
 
+from __future__ import annotations
 import os
-import json
+from typing import Optional, Dict, List, Set, Any
+from datetime import datetime
+from dataclasses import dataclass
 import requests
 import feedparser
-from datetime import datetime, timedelta
 from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 import pytz
 
-# Load environment variables
 load_dotenv()
 
-# Configuration
-PLANKA_URL = os.getenv("PLANKA_URL", "http://10.0.3.3:1337/api")
-PLANKA_TOKEN = os.getenv("PLANKA_TOKEN")
-BOARD_ID = os.getenv("PLANKA_BOARD_ID", "1700155527532643351")
-TODO_LIST_ID = os.getenv("PLANKA_TODO_LIST_ID", "1700155634697110553")
+FeedEntry = Dict[str, Any]
+PlankaCard = Dict[str, Any]
+Headers = Dict[str, str]
 
-# Microsoft/Power Platform RSS Feeds
-FEEDS = {
+
+@dataclass(frozen=True)
+class Config:
+    PLANKA_URL: str = os.getenv("PLANKA_URL", "http://10.0.3.3:1337/api")
+    PLANKA_TOKEN: Optional[str] = os.getenv("PLANKA_TOKEN")
+    BOARD_ID: str = os.getenv("PLANKA_BOARD_ID", "1700155527532643351")
+    TODO_LIST_ID: str = os.getenv("PLANKA_TODO_LIST_ID", "1700155634697110553")
+
+
+FEEDS: Dict[str, str] = {
     "Microsoft Tech Community": "https://techcommunity.microsoft.com/rss-feeds",
     "Power Platform Blog": "https://powerplatform.microsoft.com/en-us/blog/feed/",
     "Microsoft 365 Blog": "https://www.microsoft.com/en-us/microsoft-365/blog/feed/",
@@ -32,8 +39,7 @@ FEEDS = {
     "Dynamics 365 Blog": "https://cloudblogs.microsoft.com/dynamics365/feed/",
 }
 
-# Keywords to filter relevant content
-KEYWORDS = [
+KEYWORDS: List[str] = [
     "power platform", "copilot", "power apps", "power automate", 
     "power bi", "dynamics 365", "m365", "microsoft 365",
     "ai", "agent", "automation", "low-code", "no-code",
@@ -42,139 +48,116 @@ KEYWORDS = [
 
 
 class NewsAggregator:
-    def __init__(self):
-        self.headers = {
-            "Authorization": f"Bearer {PLANKA_TOKEN}",
+    def __init__(self, config: Optional[Config] = None) -> None:
+        self.config = config or Config()
+        self.headers: Headers = {
+            "Authorization": f"Bearer {self.config.PLANKA_TOKEN}",
             "Content-Type": "application/json"
         }
-        self.processed_urls = set()
+        self.processed_urls: Set[str] = set()
         
-    def fetch_feed(self, name, url):
-        """Fetch and parse RSS feed"""
+    def fetch_feed(self, name: str, url: str) -> List[FeedEntry]:
         try:
-            print(f"Fetching: {name}")
+            print(f"📡 Fetching: {name}")
             feed = feedparser.parse(url)
             return feed.entries
         except Exception as e:
-            print(f"Error fetching {name}: {e}")
+            print(f"❌ Error fetching {name}: {e}")
             return []
     
-    def is_relevant(self, title, summary):
-        """Check if article is relevant to Microsoft/Power Platform"""
-        text = f"{title} {summary}".lower()
+    def is_relevant(self, title: str, summary: str) -> bool:
+        text: str = f"{title} {summary}".lower()
         return any(keyword in text for keyword in KEYWORDS)
     
-    def summarize_article(self, title, content):
-        """Create a brief summary for Planka card"""
-        # Simple summarization - extract first 200 chars
+    def summarize_article(self, title: str, content: str) -> Dict[str, str]:
         soup = BeautifulSoup(content, 'html.parser')
-        text = soup.get_text(separator=' ', strip=True)
-        summary = text[:300] + "..." if len(text) > 300 else text
-        
-        return {
-            "title": title,
-            "summary": summary
-        }
+        text: str = soup.get_text(separator=' ', strip=True)
+        summary: str = text[:300] + "..." if len(text) > 300 else text
+        return {"title": title, "summary": summary}
     
-    def create_planka_card(self, title, description, url, source):
-        """Create a card in Planka"""
-        card_name = f"[{source}] {title[:80]}"
-        card_desc = f"{description}\n\n🔗 Source: {url}\n📅 Found: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M')}"
+    def create_planka_card(self, title: str, description: str, url: str, source: str) -> Optional[PlankaCard]:
+        card_name: str = f"[{source}] {title[:80]}"
+        card_desc: str = f"{description}\n\n🔗 Source: {url}\n📅 Found: {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M')}"
         
-        data = {
+        data: Dict[str, Any] = {
             "name": card_name,
             "description": card_desc,
-            "listId": TODO_LIST_ID,
+            "listId": self.config.TODO_LIST_ID,
             "position": 1
         }
         
         try:
             response = requests.post(
-                f"{PLANKA_URL}/lists/{TODO_LIST_ID}/cards",
+                f"{self.config.PLANKA_URL}/lists/{self.config.TODO_LIST_ID}/cards",
                 headers=self.headers,
                 json=data,
                 timeout=10
             )
-            
             if response.status_code == 200:
                 print(f"✅ Created card: {card_name[:50]}...")
                 return response.json()
             else:
-                print(f"❌ Failed to create card: {response.status_code}")
-                print(response.text)
+                print(f"❌ Failed: {response.status_code}")
                 return None
-                
         except Exception as e:
-            print(f"❌ Error creating card: {e}")
+            print(f"❌ Error: {e}")
             return None
     
-    def check_existing_cards(self, url):
-        """Check if URL already exists in Planka cards"""
+    def check_existing_cards(self, url: str) -> bool:
         try:
             response = requests.get(
-                f"{PLANKA_URL}/boards/{BOARD_ID}",
+                f"{self.config.PLANKA_URL}/boards/{self.config.BOARD_ID}",
                 headers=self.headers,
                 timeout=10
             )
-            
             if response.status_code == 200:
                 data = response.json()
                 cards = data.get("included", {}).get("cards", [])
-                
-                for card in cards:
-                    if url in card.get("description", ""):
-                        return True
-                        
+                return any(url in card.get("description", "") for card in cards)
         except Exception as e:
-            print(f"Error checking existing cards: {e}")
-            
+            print(f"⚠️ Error checking: {e}")
         return False
     
-    def run(self):
-        """Main aggregation loop"""
-        print(f"\n🚀 Starting News Aggregation - {datetime.now(pytz.UTC)}")
+    def run(self) -> int:
+        print(f"\n🚀 M365-Scout - {datetime.now(pytz.UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}")
         print("=" * 60)
         
-        new_articles = 0
+        new_articles: int = 0
         
         for source_name, feed_url in FEEDS.items():
-            entries = self.fetch_feed(source_name, feed_url)
+            entries: List[FeedEntry] = self.fetch_feed(source_name, feed_url)
             
-            for entry in entries[:5]:  # Process last 5 entries per feed
-                title = entry.get("title", "")
-                link = entry.get("link", "")
-                summary = entry.get("summary", entry.get("description", ""))
+            for entry in entries[:5]:
+                title: str = entry.get("title", "")
+                link: str = entry.get("link", "")
+                summary: str = entry.get("summary", entry.get("description", ""))
                 
-                # Skip if already processed
                 if link in self.processed_urls:
                     continue
-                    
-                # Check if already in Planka
                 if self.check_existing_cards(link):
                     self.processed_urls.add(link)
                     continue
                 
-                # Check relevance
                 if self.is_relevant(title, summary):
                     article_data = self.summarize_article(title, summary)
-                    
-                    # Create Planka card
-                    result = self.create_planka_card(
+                    result: Optional[PlankaCard] = self.create_planka_card(
                         article_data["title"],
                         article_data["summary"],
                         link,
                         source_name
                     )
-                    
                     if result:
                         new_articles += 1
                         self.processed_urls.add(link)
         
         print("=" * 60)
-        print(f"✅ Aggregation complete! Added {new_articles} new articles to Planka.")
+        print(f"✅ Added {new_articles} articles to Planka.")
         return new_articles
 
 
+def main() -> None:
+    NewsAggregator().run()
+
+
 if __name__ == "__main__":
-    aggregator = NewsAggregator()
-    aggregator.run()
+    main()
